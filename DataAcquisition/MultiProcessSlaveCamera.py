@@ -313,6 +313,24 @@ def acquire_images_slave_camera(slave_cam, control_pipe, folder_name): # nodemap
             slave_device_serial_number = slave_node_device_serial_number.GetValue()
             logfile.write('Slave cam serial number retrieved as %s...\n' % slave_device_serial_number)
 
+        # Retrieve Stream Parameters device nodemap
+        s_node_map = slave_cam.GetTLStreamNodeMap()
+        
+        # Retrieve Buffer Handling Mode Information
+        handling_mode = PySpin.CEnumerationPtr(s_node_map.GetNode('StreamBufferHandlingMode'))
+        if not PySpin.IsAvailable(handling_mode) or not PySpin.IsWritable(handling_mode):
+            logfile.write('Unable to set Buffer Handling mode (node retrieval). Aborting...\n')
+            return False
+        
+        handling_mode_entry = PySpin.CEnumEntryPtr(handling_mode.GetCurrentEntry())
+        if not PySpin.IsAvailable(handling_mode_entry) or not PySpin.IsReadable(handling_mode_entry):
+            logfile.write('Unable to set Buffer Handling mode (Entry retrieval). Aborting...\n')
+            return False
+          
+        handling_mode_entry = handling_mode.GetEntryByName('NewestOnly')
+        handling_mode.SetIntValue(handling_mode_entry.GetValue())
+        logfile.write('\n\nBuffer Handling Mode has been set to %s\n' % handling_mode_entry.GetDisplayName())
+        
         time.sleep(.5)
         
         #clear buffer
@@ -329,8 +347,7 @@ def acquire_images_slave_camera(slave_cam, control_pipe, folder_name): # nodemap
                     logfile.write("Image Buffer clear\n")
                     buffer_clear = True     
             loop_count +=1;
-        
-        
+               
         control_pipe.send("ready")
         
         # image count 

@@ -319,7 +319,28 @@ def acquire_images_master_camera(master_cam, control_pipe, folder_name, slave_pi
         if not PySpin.IsAvailable(master_node_softwaretrigger_cmd) or not PySpin.IsWritable(master_node_softwaretrigger_cmd):
             logfile.write('Unable to retrive software trigger node. Aborting...\n')
         
+        
+        # Retrieve Stream Parameters device nodemap
+        s_node_map = master_cam.GetTLStreamNodeMap()
+        
+        # Retrieve Buffer Handling Mode Information
+        handling_mode = PySpin.CEnumerationPtr(s_node_map.GetNode('StreamBufferHandlingMode'))
+        if not PySpin.IsAvailable(handling_mode) or not PySpin.IsWritable(handling_mode):
+            logfile.write('Unable to set Buffer Handling mode (node retrieval). Aborting...\n')
+            return False
+        
+        handling_mode_entry = PySpin.CEnumEntryPtr(handling_mode.GetCurrentEntry())
+        if not PySpin.IsAvailable(handling_mode_entry) or not PySpin.IsReadable(handling_mode_entry):
+            logfile.write('Unable to set Buffer Handling mode (Entry retrieval). Aborting...\n')
+            return False
+        
+        
+        handling_mode_entry = handling_mode.GetEntryByName('NewestOnly')
+        handling_mode.SetIntValue(handling_mode_entry.GetValue())
+        logfile.write('\n\nBuffer Handling Mode has been set to %s\n' % handling_mode_entry.GetDisplayName())
+
         time.sleep(.5)
+        
         
         #clear buffer
         logfile.write("\nClearing camera buffer\n")
