@@ -216,7 +216,7 @@ def continuous_capture(folder_name, path = "", fps=10):
     slavecam_process.start()
     
     # add time for all process to load
-    time.sleep(1)
+    time.sleep(2)
 
     # set processes state to continuous capture
     state = "continuous_capture"
@@ -304,7 +304,7 @@ def frame_capture(folder_name, path = ""):
     slavecam_process.start()
     
     # add time for all process to load
-    time.sleep(1)
+    time.sleep(2)
 
     # set processes state to continuous capture
     

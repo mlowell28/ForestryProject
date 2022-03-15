@@ -133,14 +133,14 @@ def continuous_capture(folder_name, path = ""):
     mastercam_process = multiprocessing.Process(target=MultiProcessMasterCamera.run_master_camera, args=(mastercam_serial, mastercam_to_lidar, left_camera_folder, mastercam_to_slavecam))
     slavecam_process = multiprocessing.Process(target=MultiProcessSlaveCamera.run_slave_camera, args=(slavecam_serial, slavecam_to_mastercam, right_camera_folder))
     
-    print("Starting Lidar and Camera processes.")
-    
+    print("Starting Lidar process.")
     lidar_process.start()
+    print("Starting master camera process")
     mastercam_process.start()
-    slavecam_process.start()
-    
-    # add time for all process to load
-    time.sleep(1)
+    print("Starting slave camera process")
+    slavecam_process.start() # time for slave cam process to become initialized and setup trigger
+    time.sleep(2)
+
 
     # set processes state to continuous capture
     state = "continuous_capture"
@@ -228,14 +228,13 @@ def frame_capture(folder_name, path = ""):
     slavecam_process = multiprocessing.Process(target=MultiProcessSlaveCamera.run_slave_camera, args=(slavecam_serial, slavecam_to_mastercam, right_camera_folder))
     
     
-    print("Starting Lidar and Camera processes.")
-    
+    print("Starting Lidar process.")
     lidar_process.start()
+    print("Starting master camera process")
     mastercam_process.start()
-    slavecam_process.start()
-    
-    # add time for all process to load
-    time.sleep(1)
+    print("Starting slave camera process")
+    slavecam_process.start() # time for slave cam process to become initialized and setup trigger
+    time.sleep(2)
 
     # set processes state to continuous capture
     

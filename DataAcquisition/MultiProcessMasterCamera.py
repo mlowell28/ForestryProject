@@ -12,6 +12,7 @@ import sys
 import time
 
 logfile = None
+    
 
 def configure_image_format(cam):
     
@@ -68,7 +69,7 @@ def configure_exposure(cam):
         return False
     
     # to 10000us
-    node_auto_exposure_upper_time_limit.SetValue(7000)
+    node_auto_exposure_upper_time_limit.SetValue(10000)
     
     node_exposure_auto_continuous_mode = node_exposure_auto.GetEntryByName("Continuous")
     if not PySpin.IsAvailable(node_exposure_auto_continuous_mode) or not PySpin.IsReadable(node_exposure_auto_continuous_mode):
@@ -260,7 +261,7 @@ def grab_next_image_by_trigger(cam):
             logfile.write('Unable to execute trigger. Aborting...\n')
             return False
         
-        logfile.write("Camera Triggered, time: " + str(time.time_ns()) + "\n")
+        logfile.write(str(time.time_ns())+": Camera Triggered\n")
         node_softwaretrigger_cmd.Execute()
 
     except PySpin.SpinnakerException as ex:
@@ -300,7 +301,7 @@ def acquire_images_master_camera(master_cam, control_pipe, folder_name, slave_pi
         master_node_acquisition_mode.SetIntValue(master_acquisition_mode_continuous)
 
         logfile.write('Master camera acquisition mode set to continuous...\n')
-        
+
         #  Begin acquiring images
         master_cam.BeginAcquisition()
     
@@ -317,7 +318,30 @@ def acquire_images_master_camera(master_cam, control_pipe, folder_name, slave_pi
         master_node_softwaretrigger_cmd = PySpin.CCommandPtr(master_nodemap.GetNode('TriggerSoftware'))
         if not PySpin.IsAvailable(master_node_softwaretrigger_cmd) or not PySpin.IsWritable(master_node_softwaretrigger_cmd):
             logfile.write('Unable to retrive software trigger node. Aborting...\n')
-            
+        
+        time.sleep(.5)
+        
+        #clear buffer
+        logfile.write("\nClearing camera buffer\n")
+        loop_count = 0
+        while loop_count < 10:
+            buffer_clear = False
+            while buffer_clear == False:
+                try:
+                    master_image_result = master_cam.GetNextImage(50)
+                    logfile.write("buffer contained image\n")
+                except PySpin.SpinnakerException as ex:
+                    logfile.write('Error: %s \n' % ex)
+                    logfile.write("Image Buffer clear\n")
+                    buffer_clear = True   
+            loop_count +=1;
+        
+        logfile.write("\n")
+        
+        # wait until slave camera is initialized
+        if slave_pipe !=None:
+            recv = slave_pipe.recv()
+            logfile.write("command received: " + recv + "\n")
         
         # image count 
         image_count = 0
@@ -332,10 +356,10 @@ def acquire_images_master_camera(master_cam, control_pipe, folder_name, slave_pi
             command = control_pipe.recv()
 
             if command == "capture_image":
-                logfile.write("Command received: capture_image, time: "+ str(time.time_ns()) + "\n")
+                logfile.write(str(time.time_ns())+": Command received: capture_image, time\n")
                 state = "capture_image"
             elif command == "exit":
-                logfile.write("Command received: exit, time: "+ str(time.time_ns())+"\n")
+                logfile.write(str(time.time_ns()) + ": Command received: exit\n")
                 state = "exit" 
             
             # trigger capture
@@ -345,8 +369,11 @@ def acquire_images_master_camera(master_cam, control_pipe, folder_name, slave_pi
                     #  Retrieve the next image from the trigger
                     start_time = time.time_ns()
                     master_node_softwaretrigger_cmd.Execute()
-                    slave_pipe.send("capture_image")
                     logfile.write(str(start_time) + ": Camera Frame: " + str(image_count) + " Triggered \n")
+                    if slave_pipe !=None:
+                        slave_pipe.send("capture_image")
+                        logfile.write(str(time.time_ns())+": Sent capture_image command\n")
+                    
                     
                     trigger_end_time = time.time_ns()
                     logfile.write(str(trigger_end_time) + ": Trigger duration: " + str(trigger_end_time-start_time) + "\n")  
@@ -366,7 +393,7 @@ def acquire_images_master_camera(master_cam, control_pipe, folder_name, slave_pi
                         width = master_image_result.GetWidth()
                         height = master_image_result.GetHeight()
                         
-                        logfile.write('Grabbed Master Camera Image %d, width = %d, height = %d\n' % (image_count, width, height))
+                        logfile.write(str(time.time_ns())+': Grabbed Master Camera Image %d, width = %d, height = %d\n' % (image_count, width, height))
                         
                         master_image_converted = master_image_result.Convert(PySpin.PixelFormat_RGB8)
                         
@@ -412,10 +439,14 @@ def acquire_images_master_camera(master_cam, control_pipe, folder_name, slave_pi
         #  *** NOTES ***
         #  Ending acquisition appropriately helps ensure that devices clean up
         #  properly and do not need to be power-cycled to maintain integrity.
-        slave_pipe.send("exit")
+        
+        if slave_pipe!= None:
+            logfile.write("Sending exit command to slave\n")
+            slave_pipe.send("exit")
+        
+        logfile.write("Ending acquisition\n")
         master_cam.EndAcquisition()
-        time.sleep(1)
-    
+        
     except PySpin.SpinnakerException as ex:
         logfile.write('Error: %s \n' % ex)
         return False
@@ -526,14 +557,14 @@ def run_master_camera(serial_number, control_pipe, folder_name, slave_pipe=None)
         # Initialize cameras
         master_cam.Init()
         
-        # configure cameras
-        logfile.write("CONFIGURING SOFTWARE TRIGGER ON MASTER CAMERA\n")
-        result &= configure_trigger(master_cam, "Software")
+        #set master camera exposure
+        logfile.write("\nSetting MASTER CAMERA Exposure\n")
+        result &= configure_exposure(master_cam)
         
-        # verify configuration worked
-        if result is False:
-            return False
-        
+        #set image format
+        logfile.write("\nSetting MASTER CAMERA to RGB8 format\n")
+        result &= configure_image_format(master_cam)
+
         #Configure output lin on master camera
         logfile.write("\nCONFIGURING OUTPUT LINE ON MASTER CAMERA\n")
         result &= configure_output_line(master_cam)
@@ -542,13 +573,9 @@ def run_master_camera(serial_number, control_pipe, folder_name, slave_pipe=None)
         logfile.write("\nENABLING 3.3V OUTPUT ON MASTER CAMERA\n")
         result &= Venable(master_cam, True)
         
-        #set image format
-        logfile.write("\nSetting MASTER CAMERA to RGB8 format\n")
-        result &= configure_image_format(master_cam)
-         
-        #set master camera exposure
-        logfile.write("\nSetting MASTER CAMERA Exposure\n")
-        result &= configure_exposure(master_cam)
+        # configure cameras
+        logfile.write("CONFIGURING SOFTWARE TRIGGER ON MASTER CAMERA\n")
+        result &= configure_trigger(master_cam, "Software")
         
         #acquire images
         logfile.write("\nACQUIRING IMAGE\n")

@@ -67,7 +67,7 @@ def configure_exposure(cam):
         return False
     
     # to 1000us
-    node_auto_exposure_upper_time_limit.SetValue(7000)
+    node_auto_exposure_upper_time_limit.SetValue(10000)
     
     node_exposure_auto_continuous_mode = node_exposure_auto.GetEntryByName("Continuous")
     if not PySpin.IsAvailable(node_exposure_auto_continuous_mode) or not PySpin.IsReadable(node_exposure_auto_continuous_mode):
@@ -312,7 +312,26 @@ def acquire_images_slave_camera(slave_cam, control_pipe, folder_name): # nodemap
         if PySpin.IsAvailable(slave_node_device_serial_number) and PySpin.IsReadable(slave_node_device_serial_number):
             slave_device_serial_number = slave_node_device_serial_number.GetValue()
             logfile.write('Slave cam serial number retrieved as %s...\n' % slave_device_serial_number)
-            
+
+        time.sleep(.5)
+        
+        #clear buffer
+        logfile.write("Clearing camera buffer\n")
+        loop_count = 0
+        while loop_count < 10:
+            buffer_clear = False
+            while buffer_clear == False:
+                try:
+                    slave_image_result = slave_cam.GetNextImage(50)
+                    logfile.write("buffer contained image\n")
+                except PySpin.SpinnakerException as ex:
+                    logfile.write('Error: %s \n' % ex)
+                    logfile.write("Image Buffer clear\n")
+                    buffer_clear = True     
+            loop_count +=1;
+        
+        
+        control_pipe.send("ready")
         
         # image count 
         image_count = 0
@@ -329,9 +348,9 @@ def acquire_images_slave_camera(slave_cam, control_pipe, folder_name): # nodemap
                 logfile.write(str(time.time_ns()) +": Command received: capture_image\n")
                 state = "capture_image"
             elif command == "exit":
-                logfile.write(str(time.time_ns())+": Command received: exit, time\n")
+                logfile.write(str(time.time_ns())+": Command received: exit\n")
                 state = "exit" 
-                
+            
                     
             if command == "capture_image":
                     
@@ -398,6 +417,8 @@ def acquire_images_slave_camera(slave_cam, control_pipe, folder_name): # nodemap
         #  *** NOTES ***
         #  Ending acquisition appropriately helps ensure that devices clean up
         #  properly and do not need to be power-cycled to maintain integrity.
+        
+        logfile.write("Ending acquisition")
         slave_cam.EndAcquisition()
     
     except PySpin.SpinnakerException as ex:
@@ -510,21 +531,17 @@ def run_slave_camera(serial_number, control_pipe, folder_name):
         # Initialize cameras
         slave_cam.Init()
         
-        # configure cameras
-        logfile.write("CONFIGURING HARDWARE TRIGGER ON SLAVE CAMERA\n")
-        result &= configure_trigger(slave_cam, "Hardware")
-        
-        # verify configuration worked
-        if result is False:
-            return False
+        #set slave camera exposure
+        logfile.write("\nSetting SLAVE CAMERA Exposure\n")
+        result &= configure_exposure(slave_cam)
         
         #set image format
         logfile.write("\nSetting SLAVE CAMERA to RGB8 format\n")
         result &= configure_image_format(slave_cam)
-         
-        #set slave camera exposure
-        logfile.write("\nSetting SLAVE CAMERA Exposure\n")
-        result &= configure_exposure(slave_cam)
+        
+        # configure cameras
+        logfile.write("CONFIGURING HARDWARE TRIGGER ON SLAVE CAMERA\n")
+        result &= configure_trigger(slave_cam, "Hardware")       
         
         #acquire images
         logfile.write("\nACQUIRING IMAGE\n")
@@ -555,9 +572,9 @@ def run_slave_camera(serial_number, control_pipe, folder_name):
     
         # Release system instance
         system.ReleaseInstance()
-    
         logfile.write('exiting\n')
         logfile.close()
+        
         return result
     
   
