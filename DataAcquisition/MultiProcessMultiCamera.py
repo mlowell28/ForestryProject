@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Created on Fri Feb 18 15:53:25 2022
+Created on Tue Mar 15 13:48:53 2022
 
 @author: lowellm
 """
@@ -12,6 +12,69 @@ import sys
 import time
 
 logfile = None
+    
+def configure_acquisition_mode(cam):
+    
+    nodemap = cam.GetNodeMap()
+    
+    logfile.write('*** IMAGE ACQUISITION ***\n')
+    try:
+        result = True
+
+        # Set acquisition mode to continuous
+        # In order to access the node entries, they have to be casted to a pointer type (CEnumerationPtr here)
+        node_acquisition_mode = PySpin.CEnumerationPtr(nodemap.GetNode('AcquisitionMode'))
+        if not PySpin.IsAvailable(node_acquisition_mode) or not PySpin.IsWritable(node_acquisition_mode):
+            logfile.write('Unable to set Master Camera acquisition mode to continuous (enum retrieval). Aborting...\n')
+            return False
+
+        # Retrieve entry node from enumeration node
+        node_acquisition_mode_continuous = node_acquisition_mode.GetEntryByName('Continuous')
+        if not PySpin.IsAvailable(node_acquisition_mode_continuous) or not PySpin.IsReadable(
+                node_acquisition_mode_continuous):
+            logfile.write('Unable to set Master Camera acquisition mode to continuous (entry retrieval). Aborting...\n')
+            return False
+
+        # Retrieve integer value from entry node
+        acquisition_mode_continuous = node_acquisition_mode_continuous.GetValue()
+
+        # Set integer value from entry node as new value of enumeration node
+        node_acquisition_mode.SetIntValue(acquisition_mode_continuous)
+
+        logfile.write('Master camera acquisition mode set to continuous...\n')
+        
+    except PySpin.SpinnakerException as ex:
+        logfile.write('Error: %s \n' % ex)
+        return False
+    return result
+
+def configure_buffer_mode(cam):
+    
+    try:
+        result = True
+        # Retrieve Stream Parameters device nodemap
+        s_node_map = cam.GetTLStreamNodeMap()
+        
+        # Retrieve Buffer Handling Mode Information
+        handling_mode = PySpin.CEnumerationPtr(s_node_map.GetNode('StreamBufferHandlingMode'))
+        if not PySpin.IsAvailable(handling_mode) or not PySpin.IsWritable(handling_mode):
+            logfile.write('Unable to set Buffer Handling mode (node retrieval). Aborting...\n')
+            return False
+        
+        handling_mode_entry = PySpin.CEnumEntryPtr(handling_mode.GetCurrentEntry())
+        if not PySpin.IsAvailable(handling_mode_entry) or not PySpin.IsReadable(handling_mode_entry):
+            logfile.write('Unable to set Buffer Handling mode (Entry retrieval). Aborting...\n')
+            return False
+        
+        
+        handling_mode_entry = handling_mode.GetEntryByName('NewestOnly')
+        handling_mode.SetIntValue(handling_mode_entry.GetValue())
+        logfile.write('\n\nBuffer Handling Mode has been set to %s\n' % handling_mode_entry.GetDisplayName())   
+    except PySpin.SpinnakerException as ex:
+        logfile.write('Error: %s \n' % ex)
+        return False
+    return result
+    
     
 
 def configure_image_format(cam):
@@ -87,7 +150,7 @@ def configure_trigger(cam, triggerType="Hardware"):
     logfile.write('*** CONFIGURING TRIGGER ***\n')
     logfile.write('Note that if the application / user software triggers faster than frame time, the trigger may be dropped / skipped by the camera.\n')
     logfile.write('If several frames are needed per trigger, a more reliable alternative for such case, is to use the multi-frame mode.\n\n')
-    logfile.write('Software trigger chosen ...\n')
+    logfile.write('Trigger type: ' + triggerType)
 
 
     try:
@@ -271,8 +334,13 @@ def grab_next_image_by_trigger(cam):
     return result
 
 
-def acquire_images_master_camera(master_cam, control_pipe, folder_name, slave_pipe=None): # nodemap, nodemap_tldevice):
+def acquire_images_master_camera(master_cam, slave_cam, control_pipe, folder_name): 
     
+    left_folder_name = folder_name + "\\left\\"
+    right_folder_name = folder_name + "\\right\\"
+    
+    os.mkdir(left_folder_name)
+    os.mkdir(right_folder_name)
 
     master_nodemap = master_cam.GetNodeMap()
     
@@ -280,47 +348,12 @@ def acquire_images_master_camera(master_cam, control_pipe, folder_name, slave_pi
     try:
         result = True
 
-        # Set acquisition mode to continuous
-        # In order to access the node entries, they have to be casted to a pointer type (CEnumerationPtr here)
-        master_node_acquisition_mode = PySpin.CEnumerationPtr(master_nodemap.GetNode('AcquisitionMode'))
-        if not PySpin.IsAvailable(master_node_acquisition_mode) or not PySpin.IsWritable(master_node_acquisition_mode):
-            logfile.write('Unable to set Master Camera acquisition mode to continuous (enum retrieval). Aborting...\n')
-            return False
+        #  Begin acquiring images
 
-        # Retrieve entry node from enumeration node
-        master_node_acquisition_mode_continuous = master_node_acquisition_mode.GetEntryByName('Continuous')
-        if not PySpin.IsAvailable(master_node_acquisition_mode_continuous) or not PySpin.IsReadable(
-                master_node_acquisition_mode_continuous):
-            logfile.write('Unable to set Master Camera acquisition mode to continuous (entry retrieval). Aborting...\n')
-            return False
-
-        # Retrieve integer value from entry node
-        master_acquisition_mode_continuous = master_node_acquisition_mode_continuous.GetValue()
-
-        # Set integer value from entry node as new value of enumeration node
-        master_node_acquisition_mode.SetIntValue(master_acquisition_mode_continuous)
-
-        logfile.write('Master camera acquisition mode set to continuous...\n')
+        logfile.write('Acquiring images...\n\n')
         
-        # Retrieve Stream Parameters device nodemap
-        s_node_map = master_cam.GetTLStreamNodeMap()
-        
-        # Retrieve Buffer Handling Mode Information
-        handling_mode = PySpin.CEnumerationPtr(s_node_map.GetNode('StreamBufferHandlingMode'))
-        if not PySpin.IsAvailable(handling_mode) or not PySpin.IsWritable(handling_mode):
-            logfile.write('Unable to set Buffer Handling mode (node retrieval). Aborting...\n')
-            return False
-        
-        handling_mode_entry = PySpin.CEnumEntryPtr(handling_mode.GetCurrentEntry())
-        if not PySpin.IsAvailable(handling_mode_entry) or not PySpin.IsReadable(handling_mode_entry):
-            logfile.write('Unable to set Buffer Handling mode (Entry retrieval). Aborting...\n')
-            return False
-        
-        handling_mode_entry = handling_mode.GetEntryByName('NewestOnly')
-        handling_mode.SetIntValue(handling_mode_entry.GetValue())
-        logfile.write('\n\nBuffer Handling Mode has been set to %s\n' % handling_mode_entry.GetDisplayName())
-
         master_TLnodemap = master_cam.GetTLDeviceNodeMap()
+        
         master_device_serial_number = ''
         master_node_device_serial_number = PySpin.CStringPtr(master_TLnodemap.GetNode('DeviceSerialNumber'))
         if PySpin.IsAvailable(master_node_device_serial_number) and PySpin.IsReadable(master_node_device_serial_number):
@@ -330,34 +363,40 @@ def acquire_images_master_camera(master_cam, control_pipe, folder_name, slave_pi
         master_node_softwaretrigger_cmd = PySpin.CCommandPtr(master_nodemap.GetNode('TriggerSoftware'))
         if not PySpin.IsAvailable(master_node_softwaretrigger_cmd) or not PySpin.IsWritable(master_node_softwaretrigger_cmd):
             logfile.write('Unable to retrive software trigger node. Aborting...\n')
+            
         
-        time.sleep(.5)
-        #  Begin acquiring images
-        logfile.write('Acquiring images...\n\n')
         master_cam.BeginAcquisition()
+        slave_cam.BeginAcquisition()
         
-        
-        # #clear buffer
-        # logfile.write("\nClearing camera buffer\n")
-        # loop_count = 0
-        # while loop_count < 10:
-        #     buffer_clear = False
-        #     while buffer_clear == False:
-        #         try:
-        #             master_image_result = master_cam.GetNextImage(50)
-        #             logfile.write("buffer contained image\n")
-        #         except PySpin.SpinnakerException as ex:
-        #             logfile.write('Error: %s \n' % ex)
-        #             logfile.write("Image Buffer clear\n")
-        #             buffer_clear = True   
-        #     loop_count +=1;
-        
-        #logfile.write("\n")
-        
-        # wait until slave camera is initialized
-        if slave_pipe !=None:
-            recv = slave_pipe.recv()
-            logfile.write("command received: " + recv + "\n")
+        #clear buffer
+        logfile.write("Clearing master camera buffer\n")
+        loop_count = 0
+        while loop_count < 10:
+            buffer_clear = False
+            while buffer_clear == False:
+                try:
+                    master_image_result = master_cam.GetNextImage(50)
+                    logfile.write("master buffer contained image\n")
+                except PySpin.SpinnakerException as ex:
+                    logfile.write('Error: %s \n' % ex)
+                    logfile.write("Image Buffer clear\n")
+                    buffer_clear = True     
+            loop_count +=1;
+            
+            
+        logfile.write("Clearing slave camera buffer\n")
+        loop_count = 0
+        while loop_count < 10:
+            buffer_clear = False
+            while buffer_clear == False:
+                try:
+                    slave_image_result = slave_cam.GetNextImage(50)
+                    logfile.write("slave buffer contained image\n")
+                except PySpin.SpinnakerException as ex:
+                    logfile.write('Error: %s \n' % ex)
+                    logfile.write("Image Buffer clear\n")
+                    buffer_clear = True     
+            loop_count +=1;
         
         # image count 
         image_count = 0
@@ -386,51 +425,51 @@ def acquire_images_master_camera(master_cam, control_pipe, folder_name, slave_pi
                     start_time = time.time_ns()
                     master_node_softwaretrigger_cmd.Execute()
                     logfile.write(str(start_time) + ": Camera Frame: " + str(image_count) + " Triggered \n")
-                    if slave_pipe !=None:
-                        slave_pipe.send("capture_image")
-                        logfile.write(str(time.time_ns())+": Sent capture_image command\n")
-                    
-                    
                     trigger_end_time = time.time_ns()
                     logfile.write(str(trigger_end_time) + ": Trigger duration: " + str(trigger_end_time-start_time) + "\n")  
-                                     
+                    
+                    #time.sleep(.005)
                     #  Retrieve next received image
                     master_image_result = master_cam.GetNextImage(2000)
+                    logfile.write(str(time.time_ns()) + ": Master camera image received\n")
+                    slave_image_result = slave_cam.GetNextImage(2000)
+                    logfile.write(str(time.time_ns()) + ": Slave camera image received\n")
                     
                     image_retrived_time = time.time_ns()
-                    logfile.write(str(image_retrived_time) + ": Image Retrieved, retrival duration: " + str(image_retrived_time - trigger_end_time) + "\n")
+                    logfile.write(str(image_retrived_time) + ": Images Retrieved, retrival duration: " + str(image_retrived_time - trigger_end_time) + "\n")
     
                     #  Ensure image completion
-                    if master_image_result.IsIncomplete():
-                        logfile.write('Master Camera Image incomplete with image status %d ...\n' % master_image_result.GetImageStatus())
+                    if master_image_result.IsIncomplete() or slave_image_result.IsIncomplete():
+                        if master_image_result.IsIncomplete():
+                            logfile.write('Master Camera Image incomplete with image status %d ...\n' % master_image_result.GetImageStatus())
+                        else:
+                            logfile.write('Slave Camera Image incomplete with image status %d ...\n' % master_image_result.GetImageStatus())
                         
                     else:
     
-                        width = master_image_result.GetWidth()
-                        height = master_image_result.GetHeight()
+                        master_width = master_image_result.GetWidth()
+                        master_height = master_image_result.GetHeight()
                         
-                        logfile.write(str(time.time_ns())+': Grabbed Master Camera Image %d, width = %d, height = %d\n' % (image_count, width, height))
-                        
+                        logfile.write(str(time.time_ns())+': Grabbed Master Camera Image %d, width = %d, height = %d\n' % (image_count, master_width, master_height))
                         master_image_converted = master_image_result.Convert(PySpin.PixelFormat_RGB8)
+                        
+                        slave_width = slave_image_result.GetWidth()
+                        slave_height = master_image_result.GetHeight()
+                        
+                        logfile.write(str(time.time_ns())+': Grabbed Slave Camera Image %d, width = %d, height = %d\n' % (image_count, slave_width, slave_height))
+                        
+                        slave_image_converted = slave_image_result.Convert(PySpin.PixelFormat_RGB8)
                         
                         image_conversion_time = time.time_ns()
                         logfile.write(str(image_conversion_time) + ": Image Conversion duration: " + str(image_conversion_time - image_retrived_time) + "\n")
                         
                         # Create unique file ID
-                        
-                        if folder_name != None:
-                            
-                            if os.path.isdir(folder_name) == True:
-                                master_filename = folder_name + '%s.jpg' % (image_count)
-                                
-                            else:
-                                logfile.write("ERROR: Invalid Folder Path \n")
-                                return False
-                            
-                        else:     
-                            master_filename = '%s.jpg' % (image_count)
+
+                        master_filename = left_folder_name + '%s.jpg' % (image_count)
+                        slave_filename = right_folder_name + '%s.jpg' % (image_count)                            
      
                         master_image_converted.Save(master_filename)
+                        slave_image_converted.Save(slave_filename)
                         
                         image_save_time = time.time_ns()
                         
@@ -455,13 +494,10 @@ def acquire_images_master_camera(master_cam, control_pipe, folder_name, slave_pi
         #  *** NOTES ***
         #  Ending acquisition appropriately helps ensure that devices clean up
         #  properly and do not need to be power-cycled to maintain integrity.
-        
-        if slave_pipe!= None:
-            logfile.write("Sending exit command to slave\n")
-            slave_pipe.send("exit")
-        
+ 
         logfile.write("Ending acquisition\n")
         master_cam.EndAcquisition()
+        slave_cam.EndAcquisition()
         
     except PySpin.SpinnakerException as ex:
         logfile.write('Error: %s \n' % ex)
@@ -522,11 +558,11 @@ def print_device_info(cam):
 
     return result
 
-def run_master_camera(serial_number, control_pipe, folder_name, slave_pipe=None):
+def run_cameras(master_serial_number, slave_serial_number, control_pipe, folder_name):
     
     global logfile
     try:
-        logfile = open(folder_name +'MasterCameraLog.txt', 'w')
+        logfile = open(folder_name +'CameraLog.txt', 'w')
     except IOError:
         print('Unable to write to directory. Please check permissions.')
         input('Press Enter to exit...')
@@ -561,7 +597,8 @@ def run_master_camera(serial_number, control_pipe, folder_name, slave_pipe=None)
         logfile.write('No camera cameras!\n')
         return False
  
-    master_cam = cam_list.GetBySerial(serial_number)  
+    master_cam = cam_list.GetBySerial(master_serial_number)
+    slave_cam = cam_list.GetBySerial(slave_serial_number)
     
     try:
         result = True
@@ -570,7 +607,7 @@ def run_master_camera(serial_number, control_pipe, folder_name, slave_pipe=None)
         logfile.write("TL LAYER MASTER INFO\n")
         result &= print_device_info(master_cam)
         
-        # Initialize cameras
+        # Initialize master camera
         master_cam.Init()
         
         #set master camera exposure
@@ -589,24 +626,67 @@ def run_master_camera(serial_number, control_pipe, folder_name, slave_pipe=None)
         logfile.write("\nENABLING 3.3V OUTPUT ON MASTER CAMERA\n")
         result &= Venable(master_cam, True)
         
-        # configure cameras
+        # configure trigger 
         logfile.write("CONFIGURING SOFTWARE TRIGGER ON MASTER CAMERA\n")
         result &= configure_trigger(master_cam, "Software")
         
+        # configure acquisition mode
+        logfile.write("CONFIGURING ACQUISITION MODE ON MASTER CAMERA\n")
+        result &= configure_acquisition_mode(master_cam)
+        
+        # # # configure buffer handling
+        # logfile.write("CONFIGURING BUFFER MODE ON MASTER CAMERA\n")
+        # result &= configure_buffer_mode(master_cam)
+        
+        # get slave cam info
+        logfile.write("TL LAYER SLAVE INFO\n")
+        result &= print_device_info(slave_cam)
+        
+        # Initialize slave cameras
+        slave_cam.Init()
+        
+        #set slave camera exposure
+        logfile.write("\nSetting SLAVE CAMERA Exposure\n")
+        result &= configure_exposure(slave_cam)
+        
+        #set slave image format
+        logfile.write("\nSetting SLAVE CAMERA to RGB8 format\n")
+        result &= configure_image_format(slave_cam)
+
+        # configure hardware trigger on master cam
+        logfile.write("CONFIGURING HARDWARE TRIGGER ON SLAVE CAMERA\n")
+        result &= configure_trigger(slave_cam, "HARDWARE")
+        
+        # configure acquisition mode
+        logfile.write("CONFIGURING ACQUISITION MODE ON SLAVE CAMERA\n")
+        result &= configure_acquisition_mode(slave_cam)
+        
+        # # # configure buffer handling
+        # logfile.write("CONFIGURING BUFFER MODE ON SLAVE CAMERA\n")
+        # result &= configure_buffer_mode(slave_cam)
+        
         #acquire images
-        logfile.write("\nACQUIRING IMAGE\n")
-        result&= acquire_images_master_camera(master_cam, control_pipe, folder_name, slave_pipe)
+        logfile.write("\nACQUIRING IMAGES\n")
+        result&= acquire_images_master_camera(master_cam, slave_cam, control_pipe, folder_name)
+        
+        # reset slave trigger 
+        logfile.write("\nRESETTING SLAVE TRIGGER\n")
+        result &= reset_trigger(slave_cam)
+        
+        # Deinitialize camera
+        logfile.write("\nDEINITIALIZING SLAVE CAMERA\n")
+        slave_cam.DeInit()
         
         #reset trigger
-        logfile.write("\nRESETTING TRIGGERS\n")
+        logfile.write("\nRESETTING MASTER TRIGGER\n")
         result &= reset_trigger(master_cam)
         
         # turn off 3.3v output
-        logfile.write("\nDISABLING 3.3V OUTPUT\n")
+        logfile.write("\nDISABLING MASTER 3.3V OUTPUT\n")
         Venable(master_cam, False)
         
         # Deinitialize camera
-        logfile.write("\nDEINITIALIZING CAMERAS\n")
+        logfile.write("\nDEINITIALIZING MASTER CAMERA\n")
         master_cam.DeInit()
 
     except PySpin.SpinnakerException as ex:
@@ -620,6 +700,7 @@ def run_master_camera(serial_number, control_pipe, folder_name, slave_pipe=None)
         # cleaned up when going out of scope.
         # The usage of del is preferred to assigning the variable to None.
         del master_cam
+        del slave_cam
     
         # Clear camera list before releasing system
         cam_list.Clear()

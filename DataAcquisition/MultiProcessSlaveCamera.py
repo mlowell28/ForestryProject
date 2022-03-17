@@ -300,19 +300,6 @@ def acquire_images_slave_camera(slave_cam, control_pipe, folder_name): # nodemap
 
         logfile.write('Slave camera acquisition mode set to continuous...\n')
         
-        #  Begin acquiring images
-        slave_cam.BeginAcquisition()
-    
-        logfile.write('Acquiring images...\n\n')
-        
-        slave_TLnodemap = slave_cam.GetTLDeviceNodeMap()
-        
-        slave_device_serial_number = ''
-        slave_node_device_serial_number = PySpin.CStringPtr(slave_TLnodemap.GetNode('DeviceSerialNumber'))
-        if PySpin.IsAvailable(slave_node_device_serial_number) and PySpin.IsReadable(slave_node_device_serial_number):
-            slave_device_serial_number = slave_node_device_serial_number.GetValue()
-            logfile.write('Slave cam serial number retrieved as %s...\n' % slave_device_serial_number)
-
         # Retrieve Stream Parameters device nodemap
         s_node_map = slave_cam.GetTLStreamNodeMap()
         
@@ -330,23 +317,36 @@ def acquire_images_slave_camera(slave_cam, control_pipe, folder_name): # nodemap
         handling_mode_entry = handling_mode.GetEntryByName('NewestOnly')
         handling_mode.SetIntValue(handling_mode_entry.GetValue())
         logfile.write('\n\nBuffer Handling Mode has been set to %s\n' % handling_mode_entry.GetDisplayName())
+
         
+        slave_TLnodemap = slave_cam.GetTLDeviceNodeMap()
+        
+        slave_device_serial_number = ''
+        slave_node_device_serial_number = PySpin.CStringPtr(slave_TLnodemap.GetNode('DeviceSerialNumber'))
+        if PySpin.IsAvailable(slave_node_device_serial_number) and PySpin.IsReadable(slave_node_device_serial_number):
+            slave_device_serial_number = slave_node_device_serial_number.GetValue()
+            logfile.write('Slave cam serial number retrieved as %s...\n' % slave_device_serial_number)
+
         time.sleep(.5)
+         
+        #  Begin acquiring images
+        logfile.write('Acquiring images...\n\n')
+        slave_cam.BeginAcquisition()
         
-        #clear buffer
-        logfile.write("Clearing camera buffer\n")
-        loop_count = 0
-        while loop_count < 10:
-            buffer_clear = False
-            while buffer_clear == False:
-                try:
-                    slave_image_result = slave_cam.GetNextImage(50)
-                    logfile.write("buffer contained image\n")
-                except PySpin.SpinnakerException as ex:
-                    logfile.write('Error: %s \n' % ex)
-                    logfile.write("Image Buffer clear\n")
-                    buffer_clear = True     
-            loop_count +=1;
+        # #clear buffer
+        # logfile.write("Clearing camera buffer\n")
+        # loop_count = 0
+        # while loop_count < 10:
+        #     buffer_clear = False
+        #     while buffer_clear == False:
+        #         try:
+        #             slave_image_result = slave_cam.GetNextImage(50)
+        #             logfile.write("buffer contained image\n")
+        #         except PySpin.SpinnakerException as ex:
+        #             logfile.write('Error: %s \n' % ex)
+        #             logfile.write("Image Buffer clear\n")
+        #             buffer_clear = True     
+        #     loop_count +=1;
                
         control_pipe.send("ready")
         
@@ -367,8 +367,7 @@ def acquire_images_slave_camera(slave_cam, control_pipe, folder_name): # nodemap
             elif command == "exit":
                 logfile.write(str(time.time_ns())+": Command received: exit\n")
                 state = "exit" 
-            
-                    
+                  
             if command == "capture_image":
                     
                 try:
